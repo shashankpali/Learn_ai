@@ -1,0 +1,11 @@
+# OS & IDE
+.DS_Store
+.idea/
+*.iml
+
+# Env / secrets (never commit API keys)
+.env
+.env.local
+*.xcconfig
+
+# Learn AI – subprojects have their own .gitignore (Flutter, Xcode)
