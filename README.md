@@ -2,6 +2,8 @@
 
 Two projects (Flutter + iOS) for the **AI-Enabled Mobile Engineer** learning path. Use this README as the single source of truth for the path and current step.
 
+**Learning goals:** (1) **AI integration** — streaming, prompts, APIs, UX. (2) **Design patterns** — applied in code and documented here so the project doubles as a patterns reference. (3) **Scalability** — structure and patterns chosen so the app can grow (new features, state, multiple providers) without rewrites.
+
 ---
 
 ## For a new chat / new window
@@ -41,6 +43,54 @@ As part of this exercise, use **latest stable frameworks, clear design patterns,
 
 - Dependencies: prefer official or widely adopted packages (e.g. HTTP client, no unnecessary bloat).
 - Secrets: never commit API keys; use environment variables or a secure local config (e.g. `.env` ignored by git, or Xcode config).
+
+---
+
+## Design patterns we follow
+
+| Pattern | What we use it for | Where in code (Flutter) |
+|--------|---------------------|--------------------------|
+| **Strategy (abstraction)** | Swap fake vs real streaming without changing UI. | `core/domain/ai_streamer.dart` (contract); `features/streaming/data/fake_ai_streamer.dart` (impl). |
+| **Dependency injection (constructor)** | Inject streamer into screen and app; testable, decoupled. | `StreamingScreen(streamer:)`, `LearnAIApp(aiStreamer:)`. |
+| **Composition root** | Single place that creates dependencies and wires the app. | `main.dart` — builds `FakeAIStreamer()`, passes to `LearnAIApp`. |
+| **Separation of concerns** | UI only in presentation; data/domain in their layers. | `features/streaming/presentation/` vs `data/` vs `core/domain/`. |
+| **Reactive streams** | Streaming responses as `Stream<String>`; UI subscribes per chunk. | `AIStreamer.streamResponse()`; screen `.listen()`. |
+| **Single responsibility** | One file, one reason to change. | Each layer and screen in its own file; `main` vs `app` vs features. |
+
+
+We avoid: massive controllers, logic inside widgets, and tight coupling to a concrete API. Phase 2 adds a **data-layer** implementation of `AIStreamer` (e.g. OpenAI) without changing the contract or the screen.
+
+---
+
+## Scalability (how we grow without rewrites)
+
+- **Feature-based layout:** `lib/core/` (shared contracts, e.g. `AIStreamer`), `lib/features/<feature>/` (data + presentation). New features = new folder (e.g. `features/chat_history/`, `features/settings/`). No big "screens" or "services" dump.
+- **Single composition root:** `main.dart` creates all top-level dependencies and passes them in. When we add config, real API, or state, we add them there (or a small `injection.dart`) and pass down. Later we can introduce a DI package (e.g. `get_it`, `provider`) without changing the pattern — still inject via constructor for testability.
+- **State:** Today UI state is local (`setState`). When we need cross-screen or shared state (e.g. chat history, user prefs), we add a dedicated state layer (e.g. a notifier or BLoC) that the screen listens to; the streaming abstraction stays the same. No need to change `AIStreamer` or the screen's contract.
+- **New data sources:** New AI provider = new class implementing `AIStreamer` in `features/streaming/data/`. Composition root (or config) chooses which one to inject. Same UI, same contract.
+
+---
+
+## Stability & code quality (in terms of “future ready”)
+
+We treat **stability** and **code quality** as the foundation so the codebase can hold up as features and scale grow. No claim here about backend or 10M DAU infra — only that the **app code** is written and checked for reliability and maintainability.
+
+**What we do today:**
+
+| Area | Practice |
+|------|----------|
+| **Async safety** | Subscription cancelled in `dispose()`. Stream callbacks guard with `if (!mounted) return` before `setState` so we never update after unmount. |
+| **Linting** | `flutter_lints` (include `flutter.yaml`); `flutter analyze` clean. |
+| **Null safety** | Full null safety; strong typing. |
+| **Structure** | Clear layers (core/domain, features/…/data, presentation); single composition root; no logic in widgets beyond local state and calling injected services. |
+| **Tests** | Smoke test for streaming screen; app builds and runs. Unit tests for streamers and error paths can be added as we add real API (Phase 2) and error handling (Phase 3). |
+
+**What we’ll add as we go:**
+
+- **Phase 3:** Error handling, timeouts, retries, loading/skeleton — improves runtime stability and UX.
+- **As needed:** More unit tests (e.g. `FakeAIStreamer`, cancel behavior, error propagation), and optionally stricter `analysis_options.yaml` or custom lints.
+
+So **in terms of stability and code quality**: the project is in good shape for a learning codebase that’s meant to be future-ready — patterns and guards are in place; features and more tests will follow with the phases.
 
 ---
 
@@ -93,9 +143,18 @@ learn_ai/
 ├── README.md           # This file – path + current step
 ├── learn_ai_flutter/   # Flutter app (completed first, all phases)
 │   └── lib/
-│       ├── main.dart             # App entry, theme, routing
-│       ├── fake_ai_streamer.dart  # Phase 1 – simulated streaming
-│       # Phase 2+ may add: services/ (real API), abstractions, etc.
+│       ├── main.dart              # Composition root: create deps, runApp(LearnAIApp(aiStreamer:))
+│       ├── app.dart               # LearnAIApp(aiStreamer), theme, home
+│       ├── core/
+│       │   └── domain/
+│       │       └── ai_streamer.dart       # Contract (Strategy pattern)
+│       └── features/
+│           └── streaming/
+│               ├── data/
+│               │   └── fake_ai_streamer.dart  # Phase 1 impl
+│               │   # Phase 2+: open_ai_streamer.dart etc.
+│               └── presentation/
+│                   └── streaming_screen.dart
 └── learn_ai_ios/       # iOS app (brought to parity after Flutter)
     └── LearnAI/
         ├── LearnAIApp.swift
